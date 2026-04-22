@@ -11,3 +11,26 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime data — not committed
+logs/
+queue/
+memory/
+vector_db/
+vector_db_advanced/
+
+# Large voice model files
+assets/voices/
+
+# Claude Code session data
+.claude/
+
+# MCP server config (may contain keys)
+mcp_servers.json
+
+# Test and scratch files
+test_*.py
+smtp_test.py
+verify_upgrade.py
+demo.txt
+test_output.txt

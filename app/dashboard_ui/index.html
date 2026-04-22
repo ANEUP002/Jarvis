@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OfficeOS HUD</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css?v=20260412o">
+</head>
+<body>
+  <div class="hud-shell">
+    <div class="hud-backdrop">
+      <div class="radar-ring ring-a"></div>
+      <div class="radar-ring ring-b"></div>
+      <div class="radar-ring ring-c"></div>
+      <div class="radar-sweep"></div>
+    </div>
+    <header class="topbar glass">
+      <div class="brand-block">
+        <div class="eyebrow">OfficeOS Command Layer</div>
+        <h1>IRON HUD</h1>
+      </div>
+      <div class="topbar-right">
+        <div class="link-status">
+          <span class="link-dot" id="stream-indicator"></span>
+          <span id="stream-status">SYNCING</span>
+        </div>
+        <div class="status-chip" id="system-status">IDLE</div>
+        <div class="clock" id="hud-clock">--:--:--</div>
+      </div>
+    </header>
+
+    <section class="system-strip glass">
+      <div class="strip-card">
+        <div class="strip-label">Plan Mode</div>
+        <div id="focus-plan-mode" class="strip-value">Idle</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">Active Subtasks</div>
+        <div id="focus-subtasks" class="strip-value">0</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">Selected Tools</div>
+        <div id="focus-tools" class="strip-value">0</div>
+      </div>
+      <div class="strip-card pulse-card">
+        <div class="strip-label">Hot Signal</div>
+        <div id="focus-hot-event" class="strip-value">Awaiting telemetry</div>
+      </div>
+    </section>
+
+    <section class="system-strip glass diagnostics-strip">
+      <div class="strip-card">
+        <div class="strip-label">Worker Link</div>
+        <div id="diag-worker" class="strip-value">Checking</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">System Ready</div>
+        <div id="diag-ready" class="strip-value">Checking</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">Queue Activity</div>
+        <div id="diag-queue" class="strip-value">Unknown</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">Last Event</div>
+        <div id="diag-event" class="strip-value">No signal</div>
+      </div>
+    </section>
+
+    <main class="grid">
+      <section class="panel hero glass">
+        <div class="panel-head">
+          <span>Mission Control</span>
+          <span id="current-model" class="muted">No model</span>
+        </div>
+        <div class="hero-content">
+          <div class="hero-ring">
+            <div class="ring-center">
+              <div class="ring-label">Current Task</div>
+              <div id="current-task" class="ring-value">No active task</div>
+            </div>
+          </div>
+          <div class="hero-stats">
+            <div class="stat-card">
+              <div class="stat-label">Agent</div>
+              <div id="current-agent" class="stat-value">Idle</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">External Service</div>
+              <div id="current-service" class="stat-value">None</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Tool</div>
+              <div id="current-tool" class="stat-value">None</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-label">Complexity</div>
+              <div id="current-complexity" class="stat-value">Unknown</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel queue glass">
+        <div class="panel-head">
+          <span>Task Queue</span>
+          <span class="muted">Live intake</span>
+        </div>
+        <div class="queue-grid">
+          <div class="mini-stat">
+            <div class="mini-value" id="queue-pending">0</div>
+            <div class="mini-label">Pending</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-value" id="queue-progress">0</div>
+            <div class="mini-label">In Progress</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-value" id="queue-completed">0</div>
+            <div class="mini-label">Completed</div>
+          </div>
+          <div class="mini-stat">
+            <div class="mini-value" id="queue-failed">0</div>
+            <div class="mini-label">Failed</div>
+          </div>
+        </div>
+        <form id="task-form" class="task-form">
+          <textarea id="task-input" placeholder="Type a mission for OfficeOS..."></textarea>
+          <button type="submit">Launch Task</button>
+        </form>
+      </section>
+
+      <section class="panel jarvis glass">
+        <div class="panel-head">
+          <span>Jarvis Voice Mode</span>
+          <span id="voice-status" class="muted">Arming...</span>
+        </div>
+        <div class="jarvis-grid">
+          <button id="voice-toggle" class="ghost-btn" type="button">Arm Clap Wake</button>
+          <div class="jarvis-hint muted">Clap once to wake Jarvis. Clap again to stop listening.</div>
+        </div>
+        <div id="voice-transcript" class="drawer-block jarvis-transcript">Voice console offline.</div>
+      </section>
+
+      <section class="panel graph glass">
+        <div class="panel-head">
+          <span>Agent Graph</span>
+          <span class="muted">Task topology</span>
+        </div>
+        <div class="graph-legend">
+          <span class="pill">Task Core</span>
+          <span class="pill">Agent</span>
+          <span class="pill">Tool / Subtask</span>
+          <span class="pill warning-pill">Fallback Path</span>
+        </div>
+        <div class="graph-toolbar">
+          <button type="button" class="ghost-btn ghost-btn-small graph-expand" data-graph-panel="agent-graph-panel" data-graph-name="Agent Graph">Expand</button>
+          <button type="button" class="ghost-btn ghost-btn-small graph-reset" data-graph-target="graph-canvas">Reset View</button>
+        </div>
+        <div class="graph-stage" id="agent-graph-panel">
+          <svg id="graph-canvas" viewBox="0 0 700 360" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </section>
+
+      <section class="panel graph glass">
+        <div class="panel-head">
+          <span>Second Brain Graph</span>
+          <span class="muted">Obsidian-style memory links</span>
+        </div>
+        <div class="graph-legend">
+          <span class="pill">Task Record</span>
+          <span class="pill">Note</span>
+          <span class="pill">Captured As</span>
+        </div>
+        <div class="graph-toolbar">
+          <div class="graph-hint muted">Wheel to zoom. Drag to pan. Click a node to inspect it.</div>
+          <button type="button" class="ghost-btn ghost-btn-small graph-expand" data-graph-panel="second-brain-graph-panel" data-graph-name="Second Brain Graph">Expand</button>
+          <button type="button" class="ghost-btn ghost-btn-small graph-reset" data-graph-target="second-brain-graph-canvas">Reset View</button>
+        </div>
+        <div class="graph-stage" id="second-brain-graph-panel">
+          <svg id="second-brain-graph-canvas" viewBox="0 0 700 360" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+      </section>
+
+      <section class="panel events glass">
+        <div class="panel-head">
+          <span>Live Event Stream</span>
+          <div class="panel-actions">
+            <div class="filters" id="event-filters">
+              <button class="filter-chip active" type="button" data-filter="all">All</button>
+              <button class="filter-chip" type="button" data-filter="warning">Warnings</button>
+              <button class="filter-chip" type="button" data-filter="error">Errors</button>
+              <button class="filter-chip" type="button" data-filter="tool">Tools</button>
+              <button class="filter-chip" type="button" data-filter="model">Models</button>
+            </div>
+            <button id="clear-events" class="ghost-btn" type="button">Clear</button>
+          </div>
+        </div>
+        <div class="scrubber-row">
+          <label for="event-limit">Timeline Density</label>
+          <input id="event-limit" type="range" min="10" max="80" step="5" value="40">
+          <span id="event-limit-value" class="muted">40 events</span>
+        </div>
+        <div class="event-focus-row">
+          <div id="event-focus" class="muted">Mission-wide feed</div>
+          <button id="clear-focus" class="ghost-btn ghost-btn-small" type="button">Clear Focus</button>
+        </div>
+        <div id="event-stream" class="event-stream"></div>
+      </section>
+
+      <section class="panel metrics glass">
+        <div class="panel-head">
+          <span>Performance Metrics</span>
+          <span id="last-updated" class="muted">No data</span>
+        </div>
+        <div class="metrics-grid">
+          <div class="metric-row"><span>Tasks Total</span><strong id="metric-total">0</strong></div>
+          <div class="metric-row"><span>Completed</span><strong id="metric-completed">0</strong></div>
+          <div class="metric-row"><span>Failed</span><strong id="metric-failed">0</strong></div>
+          <div class="metric-row"><span>Fallback Events</span><strong id="metric-fallbacks">0</strong></div>
+          <div class="metric-row"><span>Tool Calls</span><strong id="metric-tools">0</strong></div>
+          <div class="metric-row"><span>Tool Failures</span><strong id="metric-tool-failures">0</strong></div>
+          <div class="metric-row"><span>Avg Duration</span><strong id="metric-avg-duration">0.0s</strong></div>
+          <div class="metric-row"><span>Last Task Type</span><strong id="metric-last-type">Unknown</strong></div>
+        </div>
+      </section>
+
+      <section class="panel timeline glass">
+        <div class="panel-head">
+          <span>Recent Tasks</span>
+          <span class="muted">Operational memory</span>
+        </div>
+        <div class="timeline-hint muted">Select a task to inspect the full mission trace.</div>
+        <div id="recent-tasks" class="task-timeline"></div>
+      </section>
+
+      <section class="panel routine glass">
+        <div class="panel-head">
+          <span>Daily Routine Overlay</span>
+          <span class="muted">Personal OS feed</span>
+        </div>
+        <div class="routine-focus">
+          <div>
+            <div class="routine-label">Current Block</div>
+            <div id="routine-current" class="routine-value">No active block</div>
+          </div>
+          <div>
+            <div class="routine-label">Next Block</div>
+            <div id="routine-next" class="routine-value">No upcoming block</div>
+          </div>
+        </div>
+        <div id="routine-list" class="routine-list"></div>
+      </section>
+
+      <section class="panel notes glass">
+        <div class="panel-head">
+          <span>Second Brain</span>
+          <span id="notes-count" class="muted">0 notes</span>
+        </div>
+        <div class="notes-toolbar">
+          <input id="notes-search" class="notes-search" type="text" placeholder="Search notes, ideas, projects...">
+          <button id="notes-search-button" class="ghost-btn ghost-btn-small" type="button">Search</button>
+          <button id="notes-new-button" class="ghost-btn ghost-btn-small" type="button">New Note</button>
+        </div>
+        <div id="notes-list" class="task-timeline"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="drawer-backdrop" class="drawer-backdrop"></div>
+  <div id="graph-modal" class="graph-modal">
+    <div class="graph-modal-shell glass">
+      <div class="drawer-head">
+        <div>
+          <div class="eyebrow">Expanded Graph View</div>
+          <h2 id="graph-modal-title">Graph</h2>
+        </div>
+        <div class="graph-modal-actions">
+          <button id="graph-modal-reset" class="ghost-btn" type="button">Reset View</button>
+          <button id="graph-modal-close" class="ghost-btn" type="button">Close</button>
+        </div>
+      </div>
+      <div id="graph-modal-host" class="graph-modal-host"></div>
+    </div>
+  </div>
+  <div id="note-editor-modal" class="graph-modal">
+    <div class="graph-modal-shell glass note-editor-shell">
+      <div class="drawer-head">
+        <div>
+          <div class="eyebrow">Second Brain Composer</div>
+          <h2 id="note-editor-title">New Note</h2>
+        </div>
+        <div class="graph-modal-actions">
+          <button id="note-editor-save" class="ghost-btn" type="button">Save Note</button>
+          <button id="note-editor-close" class="ghost-btn" type="button">Close</button>
+        </div>
+      </div>
+      <div class="note-editor-grid">
+        <input id="note-editor-name" class="note-input" type="text" placeholder="Note title">
+        <input id="note-editor-category" class="note-input" type="text" placeholder="Category e.g. projects/ai">
+        <input id="note-editor-tags" class="note-input note-input-wide" type="text" placeholder="Tags comma separated">
+        <textarea id="note-editor-body" class="note-textarea" placeholder="Write your note here. Use [[Wiki Links]] to connect notes."></textarea>
+      </div>
+    </div>
+  </div>
+  <aside id="task-drawer" class="task-drawer glass">
+    <div class="drawer-head">
+      <div>
+        <div class="eyebrow">Task Intelligence</div>
+        <h2 id="drawer-task-id">No task selected</h2>
+      </div>
+      <button id="close-drawer" class="ghost-btn" type="button">Close</button>
+    </div>
+    <div class="drawer-grid">
+      <div class="drawer-card">
+        <div class="routine-label">Status</div>
+        <div id="drawer-status" class="drawer-value">Unknown</div>
+      </div>
+      <div class="drawer-card">
+        <div class="routine-label">Agent</div>
+        <div id="drawer-agent" class="drawer-value">Unknown</div>
+      </div>
+      <div class="drawer-card">
+        <div class="routine-label">Model</div>
+        <div id="drawer-model" class="drawer-value">Unknown</div>
+      </div>
+      <div class="drawer-card">
+        <div class="routine-label">Queue Folder</div>
+        <div id="drawer-folder" class="drawer-value">Unknown</div>
+      </div>
+    </div>
+    <div class="drawer-section">
+      <div class="panel-head">
+        <span>Task Input</span>
+        <span id="drawer-updated-at" class="muted">No record</span>
+      </div>
+      <div id="drawer-input" class="drawer-block">Select a task to inspect details.</div>
+    </div>
+    <div class="drawer-section">
+      <div class="panel-head">
+        <span>Memory Workflow</span>
+        <span id="drawer-memory-status" class="muted">No memory data</span>
+      </div>
+      <div class="drawer-block">
+        <div id="drawer-memory-summary" class="drawer-memory-summary">No second-brain activity recorded for this task yet.</div>
+        <div id="drawer-memory-notes" class="drawer-memory-group"></div>
+        <div id="drawer-memory-captures" class="drawer-memory-group"></div>
+      </div>
+    </div>
+    <div class="drawer-section">
+      <div class="panel-head">
+        <span>Timeline</span>
+        <span id="drawer-timeline-count" class="muted">0 events</span>
+      </div>
+      <div class="scrubber-row drawer-scrubber">
+        <label for="drawer-playback">Playback</label>
+        <input id="drawer-playback" type="range" min="1" max="1" step="1" value="1">
+        <span id="drawer-playback-value" class="muted">Full trace</span>
+      </div>
+      <div id="drawer-summary" class="drawer-summary"></div>
+      <div id="drawer-timeline" class="drawer-timeline"></div>
+    </div>
+  </aside>
+  <aside id="note-drawer" class="task-drawer note-drawer glass">
+    <div class="drawer-head">
+      <div>
+        <div class="eyebrow">Second Brain Note</div>
+        <h2 id="note-drawer-title">No note selected</h2>
+      </div>
+      <button id="close-note-drawer" class="ghost-btn" type="button">Close</button>
+    </div>
+    <div class="drawer-grid">
+      <div class="drawer-card">
+        <div class="routine-label">Category</div>
+        <div id="note-drawer-category" class="drawer-value">Unknown</div>
+      </div>
+      <div class="drawer-card">
+        <div class="routine-label">Updated</div>
+        <div id="note-drawer-updated" class="drawer-value">Unknown</div>
+      </div>
+    </div>
+    <div class="drawer-section">
+      <div class="panel-head">
+        <span>Metadata</span>
+        <span id="note-drawer-id" class="muted">No note</span>
+      </div>
+      <div class="drawer-block">
+        <div id="note-drawer-tags" class="note-tags"></div>
+        <div id="note-drawer-links" class="drawer-meta-list"></div>
+        <div class="note-drawer-actions">
+          <button id="note-edit-button" class="ghost-btn ghost-btn-small" type="button">Edit Note</button>
+        </div>
+      </div>
+    </div>
+    <div class="drawer-section">
+      <div class="panel-head">
+        <span>Note Body</span>
+        <span id="note-drawer-source" class="muted">No source</span>
+      </div>
+      <div id="note-drawer-body" class="drawer-block note-body">Select a note to inspect details.</div>
+    </div>
+  </aside>
+  <script>
+    window.OFFICEOS_ENABLE_WS = true;
+  </script>
+  <script src="/static/app.js?v=20260412m"></script>
+</body>
+</html>

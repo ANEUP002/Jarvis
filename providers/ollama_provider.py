@@ -1,4 +1,4 @@
-"""import requests
+import requests
 import time
 
 
@@ -44,8 +44,8 @@ def generate(prompt: str, model: str = "gemma:2b", max_retries: int = 2):
             time.sleep(1)
 
     # FINAL FAIL SAFE
-    raise Exception(f"LLM failed after retries: {last_error}")"""
-import requests
+    raise Exception(f"LLM failed after retries: {last_error}")
+'''import requests
 import time
 import os
 from dotenv import load_dotenv
@@ -107,4 +107,4 @@ def generate(prompt: str, model: str = "MiniMax-M2.7", system_prompt: str = None
             time.sleep(1)
 
     #   FINAL FAIL SAFE
-    raise Exception(f"LLM failed after retries: {last_error}")
+    raise Exception(f"LLM failed after retries: {last_error}")'''

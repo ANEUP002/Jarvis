@@ -2,8 +2,9 @@ import json
 import re
 from typing import Any, Dict, List
 
-from providers.ollama_provider import generate
-
+from providers.minimax_provider import MiniMaxProvider 
+from agents.note_workflows import load_memory_bundle
+from app.intents import is_weather_query
 
 # =========================
 # STRICT PROMPT
@@ -11,15 +12,27 @@ from providers.ollama_provider import generate
 CHIEF_PROMPT = """
 You are a STRICT JSON planner.
 
-Rules:
-- Return ONLY valid JSON
+CRITICAL RULES:
+- Output ONLY valid JSON
 - NO explanation
 - NO markdown
-- NO extra text
+- NO code blocks
+- NO comments
 - JSON must be syntactically correct
 
-Allowed task_type:
+TASK TYPES:
 code, writer, research
+
+INSTRUCTIONS:
+- Decide if the task is simple or multi-step
+- If simple → return simple format
+- If complex → break into meaningful subtasks
+
+SUBTASK RULES:
+- Each subtask must be specific
+- Each subtask must be executable independently
+- Avoid vague instructions like "research the topic"
+- Include enough detail for execution
 
 FORMAT:
 
@@ -30,8 +43,8 @@ Multi:
 {
   "mode": "multi",
   "subtasks": [
-    {"id": 1, "task_type": "research", "input": "Research the topic"},
-    {"id": 2, "task_type": "writer", "input": "Write a summary"}
+    {"id": 1, "task_type": "research", "input": "Detailed research task"},
+    {"id": 2, "task_type": "writer", "input": "Write based on research"}
   ]
 }
 
@@ -41,22 +54,39 @@ __TASK__
 
 VALID_TYPES = {"code", "writer", "research"}
 
+minimax = MiniMaxProvider()
 
+
+def _safe_print(text: str) -> None:
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", errors="ignore").decode())
 # =========================
 # JSON EXTRACTION
 # =========================
 def _extract_json(text: str) -> str:
     text = text.strip()
 
+    # Strip <think>...</think> reasoning blocks (MiniMax / DeepSeek-style models)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
     text = re.sub(r"```json", "", text, flags=re.IGNORECASE)
     text = re.sub(r"```", "", text)
+    text = text.strip()
 
-    start = text.find("{")
-    end = text.rfind("}")
-
-    if start != -1 and end != -1 and end > start:
-        return text[start:end + 1]
-
+    # Find the LAST complete JSON object (the model's actual answer, not its examples)
+    last_end = text.rfind("}")
+    if last_end == -1:
+        return ""
+    # Walk backwards from last } to find matching {
+    depth = 0
+    for i in range(last_end, -1, -1):
+        if text[i] == "}":
+            depth += 1
+        elif text[i] == "{":
+            depth -= 1
+            if depth == 0:
+                return text[i:last_end + 1]
     return ""
 
 
@@ -76,16 +106,29 @@ def _safe_json_loads(text: str) -> Dict[str, Any]:
 # PLAN TASK
 # =========================
 def plan_task(task_input: str) -> Dict[str, Any]:
+    if is_weather_query(task_input):
+        return {
+            "mode": "simple",
+            "task_type": "research",
+        }
     # ✅ FIX: NO .format() → use replace
-    prompt = CHIEF_PROMPT.replace("__TASK__", task_input)
+    # Use raw input for second brain search (strip any conversation history prefix)
+    search_input = task_input.split("[CURRENT REQUEST]")[-1].strip() if "[CURRENT REQUEST]" in task_input else task_input
+    note_context, _notes_result = load_memory_bundle({"input": search_input}, agent_name="research", limit=2)
+    enriched_task = task_input
+    if note_context:
+        enriched_task = f"{task_input}\n\nPlanner context:\n{note_context}"
+    prompt = CHIEF_PROMPT.replace("__TASK__", enriched_task)
 
     try:
         # 🔥 FORCE STRONG MODEL FOR PLANNING
-        response = generate(prompt, model="gemma:2b")
-
-        print("\n========== CHIEF DEBUG ==========")
-        print(response)
-        print("================================\n")
+        response = minimax.chat(
+            system_prompt="You are a STRICT JSON planner.",
+            user_prompt=prompt
+        )
+        _safe_print("\n========== CHIEF DEBUG ==========")
+        _safe_print(response)
+        _safe_print("================================\n")
 
         cleaned = _extract_json(response)
 
@@ -153,6 +196,19 @@ def plan_task(task_input: str) -> Dict[str, Any]:
 # =========================
 # RESULT COMBINER
 # =========================
+
+def _clean_final_response(text: str) -> str:
+    if not text:
+        return ""
+
+    clean_text = text.strip()
+    clean_text = re.sub(r"<think>.*?</think>\s*", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
+    clean_text = re.sub(r"\[think\].*?\[/think\]\s*", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
+    clean_text = re.sub(r"^\s*(Let me .*?\n\n)", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
+    clean_text = re.sub(r"^(Final response:|Answer:)\s*", "", clean_text, flags=re.IGNORECASE)
+    return clean_text.strip()
+
+
 def combine_results(original_task: str, subtask_results: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     if len(subtask_results) == 1:
@@ -170,23 +226,41 @@ def combine_results(original_task: str, subtask_results: List[Dict[str, Any]]) -
         )
 
     merge_prompt = f"""
-You are combining outputs from multiple AI agents into one final response.
+You are a response synthesizer.
+
+Do not include analysis, reasoning, or internal thoughts.
+Write one final clean response for the user based on the original task and agent outputs.
+Return plain text only, with no extra commentary.
 
 Original task:
 {original_task}
 
 Agent outputs:
 {combined_text}
-
-Write one final clean response for the user.
-Return plain text only.
 """
 
     try:
-        # 🔥 Use strong model for final merge
-        final_response = generate(merge_prompt, model="gemma:2b").strip()
+        # Use strong model for final merge
+        final_response = minimax.chat(
+            system_prompt="""
+You are a high-quality response synthesizer.
+
+Your job:
+- Combine multiple agent outputs into ONE clean final answer
+- Remove redundancy
+- Improve clarity and flow
+- Keep it concise but complete
+- Maintain a professional tone
+
+Return ONLY the final answer.
+""",
+            user_prompt=merge_prompt,
+        ).strip()
+        final_response = _clean_final_response(final_response)
+        if not final_response:
+            raise ValueError("Empty final response from combiner")
     except Exception:
-        final_response = combined_text
+        final_response = _clean_final_response(combined_text)
 
     return {
         "response": final_response,
