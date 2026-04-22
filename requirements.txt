@@ -1,0 +1,29 @@
+# Core
+python-dotenv
+httpx
+requests
+numpy
+rich
+fastapi
+uvicorn
+pydantic
+
+# LLM providers
+openai
+
+# Web search
+ddgs
+
+# Voice
+pyaudio
+sounddevice
+faster-whisper
+
+# YouTube
+yt-dlp
+
+# Embeddings / vector DB
+sentence-transformers
+
+# Task queue / API
+aiofiles
