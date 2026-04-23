@@ -25,5 +25,8 @@ yt-dlp
 # Embeddings / vector DB
 sentence-transformers
 
+# Desktop automation
+pyautogui
+
 # Task queue / API
 aiofiles

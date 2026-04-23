@@ -586,10 +586,18 @@ def main() -> None:
 
             # ── Desktop control shortcuts ─────────────────────────────────────
             if cmd.startswith("open "):
-                app = user_input[5:].strip()
-                from tools.desktop_tools import OpenAppTool
-                r = OpenAppTool().execute(app=app)
-                _print_tool_result(r, f"open {app}")
+                import re as _re2
+                from tools.desktop_tools import OpenAppTool, OpenWebsiteTool, resolve_website
+                _target = user_input[5:].strip()
+                # Strip "in (web) browser" suffix → treat remainder as website
+                _web_suffix = _re2.sub(r"\s+in\s+(web\s+)?browser$", "", _target, flags=_re2.IGNORECASE).strip()
+                _stripped = _web_suffix != _target
+                _site_url = resolve_website(_web_suffix if _stripped else _target)
+                if _site_url:
+                    r = OpenWebsiteTool().execute(site=_web_suffix if _stripped else _target)
+                else:
+                    r = OpenAppTool().execute(app=_target)
+                _print_tool_result(r, f"open {_target}")
                 continue
 
             if cmd.startswith("close "):
@@ -645,6 +653,53 @@ def main() -> None:
                                         border_style="cyan", box=box.ROUNDED))
                 else:
                     console.print(f"[red]  Error: {r['error']}[/red]")
+                continue
+
+            if cmd.startswith("type "):
+                text = user_input[5:].strip()
+                from tools.desktop_tools import TypeTextTool
+                r = TypeTextTool().execute(text=text)
+                _print_tool_result(r, f"type")
+                continue
+
+            if cmd.startswith("press "):
+                key = user_input[6:].strip()
+                from tools.desktop_tools import PressKeyTool
+                r = PressKeyTool().execute(key=key)
+                _print_tool_result(r, f"press {key}")
+                continue
+
+            if cmd.startswith("scroll "):
+                parts = user_input[7:].strip().split()
+                direction = parts[0] if parts else "down"
+                amount = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 3
+                from tools.desktop_tools import ScrollTool
+                r = ScrollTool().execute(direction=direction, amount=amount)
+                _print_tool_result(r, f"scroll {direction}")
+                continue
+
+            if cmd.startswith("click "):
+                parts = user_input[6:].strip().split()
+                try:
+                    x, y = int(parts[0]), int(parts[1])
+                    from tools.desktop_tools import MouseClickTool
+                    r = MouseClickTool().execute(x=x, y=y)
+                    _print_tool_result(r, f"click {x},{y}")
+                except (ValueError, IndexError):
+                    console.print("[red]Usage: click <x> <y>[/red]")
+                continue
+
+            if cmd == "mouse pos" or cmd == "where is mouse":
+                from tools.desktop_tools import GetMousePositionTool
+                r = GetMousePositionTool().execute()
+                _print_tool_result(r, "mouse position")
+                continue
+
+            if cmd.startswith("go to ") or cmd.startswith("website "):
+                site = user_input.split(" ", 2)[-1].strip()
+                from tools.desktop_tools import OpenWebsiteTool
+                r = OpenWebsiteTool().execute(site=site)
+                _print_tool_result(r, f"go to {site}")
                 continue
 
             if cmd.startswith("search apps") or cmd.startswith("find app"):

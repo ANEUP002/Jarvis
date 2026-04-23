@@ -1,22 +1,13 @@
 """
 Desktop Control Tools for JARVIS (Windows)
-Zero extra dependencies — everything runs through PowerShell.
-
-Tools:
-    open_app        — launch any installed app
-    close_app       — kill a process by name/title
-    list_windows    — see all open windows
-    focus_window    — bring any window to front
-    get_active_window — what's focused right now
-    run_command     — run any shell/PowerShell command
-    take_screenshot — screenshot to a file
-    search_apps     — discover installed apps by keyword
+Full desktop automation: apps, websites, mouse, keyboard, screenshots.
 """
 
 import datetime
 import json
 import subprocess
 import time
+import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -26,114 +17,191 @@ from tools.base_tool import BaseTool
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _ps(script: str, timeout: int = 15) -> subprocess.CompletedProcess:
-    """Run a PowerShell script and return the result."""
     return subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
+        capture_output=True, text=True, timeout=timeout,
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
 
 
 def _ps_json(script: str, timeout: int = 15) -> Any:
-    """Run PowerShell that outputs JSON, parse and return."""
     result = _ps(script, timeout=timeout)
     raw = result.stdout.strip()
     if not raw:
         return None
     data = json.loads(raw)
-    # PowerShell wraps single objects in a dict instead of a list
     return data if isinstance(data, list) else [data]
+
+
+def _launch(cmd: str) -> None:
+    """Launch an app or protocol URL reliably on Windows."""
+    subprocess.Popen(f'start "" {cmd}', shell=True)
+
+
+def _pyautogui():
+    """Lazy import pyautogui — fails gracefully if not installed."""
+    try:
+        import pyautogui as pg
+        pg.FAILSAFE = True
+        pg.PAUSE = 0.05
+        return pg
+    except ImportError:
+        return None
 
 
 # ── App shorthand map ─────────────────────────────────────────────────────────
 
 APP_SHORTCUTS: Dict[str, str] = {
     # Browsers
-    "chrome": "chrome",
-    "browser": "chrome",
-    "firefox": "firefox",
-    "edge": "msedge",
-    "brave": "brave",
+    "chrome":          "chrome",
+    "browser":         "chrome",
+    "google chrome":   "chrome",
+    "firefox":         "firefox",
+    "edge":            "msedge",
+    "microsoft edge":  "msedge",
+    "brave":           "brave",
     # Microsoft Office
-    "excel": "excel",
-    "word": "winword",
-    "powerpoint": "powerpnt",
-    "outlook": "outlook",
-    "onenote": "onenote",
-    "access": "msaccess",
+    "excel":           "excel",
+    "word":            "winword",
+    "powerpoint":      "powerpnt",
+    "outlook":         "outlook",
+    "onenote":         "onenote",
+    "access":          "msaccess",
     # Dev tools
-    "vscode": "code",
-    "code": "code",
-    "terminal": "wt",
-    "cmd": "cmd",
-    "powershell": "powershell",
-    "git": "gitbash",
-    "postman": "postman",
+    "vscode":          "code",
+    "vs code":         "code",
+    "code":            "code",
+    "terminal":        "wt",
+    "cmd":             "cmd",
+    "powershell":      "powershell",
+    "postman":         "postman",
     # Editors
-    "notepad": "notepad",
-    "notepad++": "notepad++",
-    "sublime": "sublime_text",
+    "notepad":         "notepad",
+    "notepad++":       "notepad++",
+    "sublime":         "sublime_text",
     # Communication
-    "teams": "ms-teams:",
-    "slack": "slack",
-    "discord": "discord",
-    "zoom": "zoom",
-    "skype": "skype",
-    "whatsapp": "whatsapp:",
+    "teams":           "ms-teams:",
+    "slack":           "slack",
+    "discord":         "discord",
+    "zoom":            "zoom",
+    "skype":           "skype",
+    "whatsapp":        "whatsapp:",
     # Media
-    "spotify": "spotify",
-    "vlc": "vlc",
-    "photos": "ms-photos:",
-    "camera": "microsoft.windows.camera:",
+    "spotify":         "spotify",
+    "vlc":             "vlc",
+    "photos":          "ms-photos:",
+    "camera":          "microsoft.windows.camera:",
     # System
-    "calculator": "calc",
-    "calc": "calc",
-    "paint": "mspaint",
-    "paint3d": "ms-paint:",
-    "explorer": "explorer",
-    "file explorer": "explorer",
-    "task manager": "taskmgr",
-    "control panel": "control",
-    "settings": "ms-settings:",
-    "device manager": "devmgmt.msc",
-    "registry": "regedit",
-    "snipping tool": "snippingtool",
-    "snip": "snippingtool",
-    "clock": "ms-clock:",
-    "alarms": "ms-clock:",
-    "weather": "bingweather:",
-    "maps": "bingmaps:",
-    "store": "ms-windows-store:",
+    "calculator":      "calc",
+    "calc":            "calc",
+    "paint":           "mspaint",
+    "paint3d":         "ms-paint:",
+    "explorer":        "explorer",
+    "file explorer":   "explorer",
+    "task manager":    "taskmgr",
+    "control panel":   "control",
+    "settings":        "ms-settings:",
+    "device manager":  "devmgmt.msc",
+    "registry":        "regedit",
+    "snipping tool":   "snippingtool",
+    "snip":            "snippingtool",
+    "clock":           "ms-clock:",
+    "alarms":          "ms-clock:",
+    "store":           "ms-windows-store:",
     "microsoft store": "ms-windows-store:",
-    "microsoft": "ms-windows-store:",
-    "mail": "outlookmail:",
-    "calendar": "outlookcal:",
-    "sticky notes": "microsoft.microsoftstickyNotes:",
-    "to do": "ms-todo:",
-    "todo": "ms-todo:",
-    # Others
-    "steam": "steam",
-    "obs": "obs64",
-    "7zip": "7zfm",
-    "winrar": "winrar",
+    "mail":            "outlookmail:",
+    "calendar":        "outlookcal:",
+    "sticky notes":    "microsoft.microsoftstickyNotes:",
+    "to do":           "ms-todo:",
+    "todo":            "ms-todo:",
+    "steam":           "steam",
+    "obs":             "obs64",
+    "7zip":            "7zfm",
+    "winrar":          "winrar",
 }
+
+# Common websites — keyword → URL
+WEBSITE_MAP: Dict[str, str] = {
+    "facebook":      "https://www.facebook.com",
+    "youtube":       "https://www.youtube.com",
+    "google":        "https://www.google.com",
+    "twitter":       "https://www.twitter.com",
+    "x":             "https://www.x.com",
+    "instagram":     "https://www.instagram.com",
+    "reddit":        "https://www.reddit.com",
+    "netflix":       "https://www.netflix.com",
+    "amazon":        "https://www.amazon.com",
+    "github":        "https://www.github.com",
+    "gmail":         "https://mail.google.com",
+    "google drive":  "https://drive.google.com",
+    "drive":         "https://drive.google.com",
+    "google maps":   "https://maps.google.com",
+    "maps":          "https://maps.google.com",
+    "linkedin":      "https://www.linkedin.com",
+    "wikipedia":     "https://www.wikipedia.org",
+    "stackoverflow": "https://www.stackoverflow.com",
+    "stack overflow":"https://www.stackoverflow.com",
+    "chatgpt":       "https://chat.openai.com",
+    "openai":        "https://chat.openai.com",
+    "claude":        "https://claude.ai",
+    "whatsapp web":  "https://web.whatsapp.com",
+    "twitch":        "https://www.twitch.tv",
+    "tiktok":        "https://www.tiktok.com",
+    "pinterest":     "https://www.pinterest.com",
+    "ebay":          "https://www.ebay.com",
+    "paypal":        "https://www.paypal.com",
+    "outlook":       "https://outlook.live.com",
+    "hotmail":       "https://outlook.live.com",
+    "yahoo":         "https://www.yahoo.com",
+    "bing":          "https://www.bing.com",
+    "duckduckgo":    "https://www.duckduckgo.com",
+    "dropbox":       "https://www.dropbox.com",
+    "notion":        "https://www.notion.so",
+    "trello":        "https://www.trello.com",
+    "figma":         "https://www.figma.com",
+    "canva":         "https://www.canva.com",
+}
+
+
+def resolve_website(name: str) -> str | None:
+    """Return URL for a website name, or None if unknown."""
+    key = name.lower().strip()
+    if key in WEBSITE_MAP:
+        return WEBSITE_MAP[key]
+    # If it looks like a URL already
+    if key.startswith("http") or "." in key.split("/")[0]:
+        return key if key.startswith("http") else f"https://{key}"
+    return None
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
 class OpenAppTool(BaseTool):
     name = "open_app"
-    description = "Open any desktop application by name (e.g. 'chrome', 'vscode', 'spotify', 'calculator', 'excel')"
+    description = "Open any desktop application by name (chrome, vscode, spotify, calculator, excel…)"
 
     def execute(self, app: str, **kwargs) -> Dict[str, Any]:
         try:
-            cmd = APP_SHORTCUTS.get(app.lower().strip(), app)
-            # shell=True handles UWP protocol URLs (ms-settings:, etc.) and PATH lookups
-            subprocess.Popen(cmd, shell=True)
-            time.sleep(0.4)  # let the window appear
+            key = app.lower().strip()
+            cmd = APP_SHORTCUTS.get(key, app)
+            _launch(cmd)
+            time.sleep(0.4)
             return {"success": True, "result": f"Opened '{app}'", "error": None}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+class OpenWebsiteTool(BaseTool):
+    name = "open_website"
+    description = "Open any website in the default browser (facebook, youtube, github, or a URL)"
+
+    def execute(self, site: str, **kwargs) -> Dict[str, Any]:
+        try:
+            url = resolve_website(site)
+            if not url:
+                return {"success": False, "result": None, "error": f"Unknown site: '{site}'"}
+            webbrowser.open(url)
+            return {"success": True, "result": f"Opened {url}", "error": None}
         except Exception as exc:
             return {"success": False, "result": None, "error": str(exc)}
 
@@ -161,7 +229,7 @@ class CloseAppTool(BaseTool):
 
 class ListWindowsTool(BaseTool):
     name = "list_windows"
-    description = "List all currently open windows with their titles, process names, and PIDs"
+    description = "List all currently open windows with their titles and process names"
 
     def execute(self, **kwargs) -> Dict[str, Any]:
         try:
@@ -183,7 +251,6 @@ class FocusWindowTool(BaseTool):
     name = "focus_window"
     description = "Bring any window to the foreground by its title or app name"
 
-    # Inlined C# so we don't need extra packages
     _WIN32_CS = """
 Add-Type -TypeDefinition @'
 using System;
@@ -219,7 +286,7 @@ public class WinFocus {
 
 class GetActiveWindowTool(BaseTool):
     name = "get_active_window"
-    description = "Get the title and process name of the window that is currently focused"
+    description = "Get the title and process name of the currently focused window"
 
     _WIN32_CS = """
 Add-Type -TypeDefinition @'
@@ -250,33 +317,6 @@ public class FGW {
             return {"success": False, "result": None, "error": str(exc)}
 
 
-class RunCommandTool(BaseTool):
-    name = "run_command"
-    description = "Run any PowerShell or shell command and return its output"
-
-    def execute(self, command: str, shell: str = "powershell", timeout: int = 30, **kwargs) -> Dict[str, Any]:
-        try:
-            if shell == "powershell":
-                proc = _ps(command, timeout=timeout)
-            else:
-                proc = subprocess.run(
-                    command, shell=True, capture_output=True,
-                    text=True, timeout=timeout,
-                )
-            output = (proc.stdout or "").strip()
-            error_out = (proc.stderr or "").strip()
-            success = proc.returncode == 0
-            return {
-                "success": success,
-                "result": {"output": output, "returncode": proc.returncode},
-                "error": error_out if not success else None,
-            }
-        except subprocess.TimeoutExpired:
-            return {"success": False, "result": None, "error": f"Timed out after {timeout}s"}
-        except Exception as exc:
-            return {"success": False, "result": None, "error": str(exc)}
-
-
 class TakeScreenshotTool(BaseTool):
     name = "take_screenshot"
     description = "Take a full screenshot and save it as a PNG file"
@@ -287,7 +327,6 @@ class TakeScreenshotTool(BaseTool):
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 filepath = str(Path.home() / "Pictures" / f"jarvis_{ts}.png")
             Path(filepath).parent.mkdir(parents=True, exist_ok=True)
-
             script = f"""
 Add-Type -Assembly System.Windows.Forms,System.Drawing
 $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
@@ -302,6 +341,30 @@ Write-Output 'ok'
             if "ok" in result.stdout:
                 return {"success": True, "result": {"filepath": filepath}, "error": None}
             return {"success": False, "result": None, "error": result.stderr or "Screenshot failed"}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+class RunCommandTool(BaseTool):
+    name = "run_command"
+    description = "Run any PowerShell or shell command and return its output"
+
+    def execute(self, command: str, shell: str = "powershell", timeout: int = 30, **kwargs) -> Dict[str, Any]:
+        try:
+            if shell == "powershell":
+                proc = _ps(command, timeout=timeout)
+            else:
+                proc = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=timeout)
+            output = (proc.stdout or "").strip()
+            error_out = (proc.stderr or "").strip()
+            success = proc.returncode == 0
+            return {
+                "success": success,
+                "result": {"output": output, "returncode": proc.returncode},
+                "error": error_out if not success else None,
+            }
+        except subprocess.TimeoutExpired:
+            return {"success": False, "result": None, "error": f"Timed out after {timeout}s"}
         except Exception as exc:
             return {"success": False, "result": None, "error": str(exc)}
 
@@ -325,19 +388,15 @@ class SearchAppsTool(BaseTool):
 
 class SetVolumeTool(BaseTool):
     name = "set_volume"
-    description = "Set the system volume (0–100) or mute/unmute"
+    description = "Set the system volume (0–100)"
 
     def execute(self, level: int = None, mute: bool = None, **kwargs) -> Dict[str, Any]:
         try:
-            if mute is True:
-                script = "$obj = New-Object -ComObject WScript.Shell; for($i=0;$i-lt50;$i++){$obj.SendKeys([char]173)}"
-            elif mute is False:
+            if mute is not None:
                 script = "$obj = New-Object -ComObject WScript.Shell; for($i=0;$i-lt50;$i++){$obj.SendKeys([char]173)}"
             elif level is not None:
-                # Use nircmd if available, else PowerShell audio API
                 script = f"""
 $vol = [math]::Round({level} / 100 * 65535)
-$wsh = New-Object -ComObject WScript.Shell
 Add-Type -TypeDefinition @'
 using System.Runtime.InteropServices;
 [Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -357,9 +416,112 @@ Write-Output "volume set to {level}"
             return {"success": False, "result": None, "error": str(exc)}
 
 
-# Convenience list for registration
+# ── Mouse & Keyboard (pyautogui) ──────────────────────────────────────────────
+
+class TypeTextTool(BaseTool):
+    name = "type_text"
+    description = "Type text into the currently focused window (like a keyboard)"
+
+    def execute(self, text: str, interval: float = 0.03, **kwargs) -> Dict[str, Any]:
+        pg = _pyautogui()
+        if pg is None:
+            return {"success": False, "result": None, "error": "pyautogui not installed. Run: pip install pyautogui"}
+        try:
+            time.sleep(0.3)
+            pg.write(text, interval=interval)
+            return {"success": True, "result": f"Typed: {text[:60]}{'...' if len(text) > 60 else ''}", "error": None}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+class MouseClickTool(BaseTool):
+    name = "mouse_click"
+    description = "Click the mouse at screen coordinates (x, y) or double-click"
+
+    def execute(self, x: int, y: int, double: bool = False, button: str = "left", **kwargs) -> Dict[str, Any]:
+        pg = _pyautogui()
+        if pg is None:
+            return {"success": False, "result": None, "error": "pyautogui not installed. Run: pip install pyautogui"}
+        try:
+            if double:
+                pg.doubleClick(x, y, button=button)
+            else:
+                pg.click(x, y, button=button)
+            return {"success": True, "result": f"{'Double-c' if double else 'C'}licked at ({x}, {y})", "error": None}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+class MouseMoveTool(BaseTool):
+    name = "mouse_move"
+    description = "Move the mouse cursor to screen coordinates (x, y)"
+
+    def execute(self, x: int, y: int, **kwargs) -> Dict[str, Any]:
+        pg = _pyautogui()
+        if pg is None:
+            return {"success": False, "result": None, "error": "pyautogui not installed. Run: pip install pyautogui"}
+        try:
+            pg.moveTo(x, y, duration=0.2)
+            return {"success": True, "result": f"Mouse moved to ({x}, {y})", "error": None}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+class ScrollTool(BaseTool):
+    name = "scroll"
+    description = "Scroll the mouse wheel up or down (amount = number of clicks)"
+
+    def execute(self, direction: str = "down", amount: int = 3, **kwargs) -> Dict[str, Any]:
+        pg = _pyautogui()
+        if pg is None:
+            return {"success": False, "result": None, "error": "pyautogui not installed. Run: pip install pyautogui"}
+        try:
+            clicks = amount if direction.lower() == "up" else -amount
+            pg.scroll(clicks)
+            return {"success": True, "result": f"Scrolled {direction} {amount} clicks", "error": None}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+class PressKeyTool(BaseTool):
+    name = "press_key"
+    description = "Press a keyboard key (enter, escape, tab, space, f5, ctrl+c, win+d, etc.)"
+
+    def execute(self, key: str, **kwargs) -> Dict[str, Any]:
+        pg = _pyautogui()
+        if pg is None:
+            return {"success": False, "result": None, "error": "pyautogui not installed. Run: pip install pyautogui"}
+        try:
+            if "+" in key:
+                keys = [k.strip() for k in key.split("+")]
+                pg.hotkey(*keys)
+            else:
+                pg.press(key.strip())
+            return {"success": True, "result": f"Pressed: {key}", "error": None}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+class GetMousePositionTool(BaseTool):
+    name = "get_mouse_position"
+    description = "Get the current mouse cursor position on screen"
+
+    def execute(self, **kwargs) -> Dict[str, Any]:
+        pg = _pyautogui()
+        if pg is None:
+            return {"success": False, "result": None, "error": "pyautogui not installed. Run: pip install pyautogui"}
+        try:
+            pos = pg.position()
+            return {"success": True, "result": {"x": pos.x, "y": pos.y}, "error": None}
+        except Exception as exc:
+            return {"success": False, "result": None, "error": str(exc)}
+
+
+# ── Registration ──────────────────────────────────────────────────────────────
+
 ALL_DESKTOP_TOOLS = [
     OpenAppTool(),
+    OpenWebsiteTool(),
     CloseAppTool(),
     ListWindowsTool(),
     FocusWindowTool(),
@@ -368,4 +530,10 @@ ALL_DESKTOP_TOOLS = [
     TakeScreenshotTool(),
     SearchAppsTool(),
     SetVolumeTool(),
+    TypeTextTool(),
+    MouseClickTool(),
+    MouseMoveTool(),
+    ScrollTool(),
+    PressKeyTool(),
+    GetMousePositionTool(),
 ]
