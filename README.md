@@ -37,32 +37,46 @@ This queue-based design means the system never blocks. You can submit ten tasks,
 ## How it's built
 
 ```
-You (clap / type)
-      │
-      ▼
-  Classifier
-  (rule-based first, LLM fallback)
-      │
-      ├──── Simple / local ──▶  Assistant Fastlane
-      │                         (time, date, greetings,
-      │                          weather, progress checks)
-      │
-      └──── Needs an agent ──▶  Chief Agent
-                                (plans and routes the task)
-                                      │
-                          ┌───────────┼───────────┐
-                          ▼           ▼            ▼
-                    Research        Code         Writer
-                     Agent          Agent         Agent
-                  (web search,   (generates,   (emails,
-                   Q&A, news)     debugs code)  documents,
-                                               summaries)
-                          │           │            │
-                          └───────────┴────────────┘
-                                      │
-                                 Second Brain
-                              (every result saved
-                               as a searchable note)
+                    ┌─────────────────────────────────────┐
+                    │           Two entry points           │
+                    │                                      │
+              jarvis.py                        API / Dashboard
+            (inline, terminal)            (queue/pending/*.json)
+                    │                                      │
+                    │                            Orchestrator
+                    │                         (background worker,
+                    │                          watches queue folder,
+                    │                          processes one at a time)
+                    │                                      │
+                    └──────────────┬───────────────────────┘
+                                   │
+                                   ▼
+                               Classifier
+                         (rule-based first, LLM fallback)
+                                   │
+                    ┌──────────────┴──────────────┐
+                    ▼                             ▼
+          Assistant Fastlane               Chief Agent
+         (time, date, weather,          (plans and routes
+          greetings, progress)               the task)
+                                               │
+                               ┌───────────────┼───────────────┐
+                               ▼               ▼               ▼
+                         Research            Code           Writer
+                           Agent             Agent           Agent
+                        (web search,      (generates,     (emails,
+                         Q&A, news)       debugs code)    documents,
+                                                          summaries)
+                               │               │               │
+                               └───────────────┴───────────────┘
+                                               │
+                                         Second Brain
+                                    (every result auto-saved
+                                     as a searchable note)
+                                               │
+                                         HUD Dashboard
+                                    (live event stream shows
+                                     every step in real time)
 ```
 
 The Classifier first tries keyword rules — fast, no LLM call. If it's confident, it skips the LLM entirely. If not, it falls back to an LLM classifier. Simple questions that start with "what", "who", "how" are always kept simple with no unnecessary multi-agent overhead.
