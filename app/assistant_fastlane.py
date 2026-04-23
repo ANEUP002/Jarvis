@@ -165,7 +165,7 @@ def handle_fastlane(query: str) -> Dict[str, Any] | None:
     if _contains_any(normalized, GREETING_PATTERNS, threshold=0.8) and len(normalized.split()) <= 5:
         return _build_result("greeting", "Hello, sir. I'm here and ready.")
 
-    if _contains_any(normalized, TIME_PATTERNS):
+    if any(p in normalized for p in TIME_PATTERNS):
         now = datetime.now()
         return _build_result("time", f"It's {now.strftime('%I:%M %p').lstrip('0')}.")
 
@@ -196,7 +196,7 @@ def handle_fastlane(query: str) -> Dict[str, Any] | None:
             model_used="tool:get_weather",
         )
 
-    if _contains_any(normalized, DATE_PATTERNS):
+    if any(p in normalized for p in DATE_PATTERNS):
         now = datetime.now()
         return _build_result("date", f"Today is {now.strftime('%A, %B %d, %Y')}.")
 
