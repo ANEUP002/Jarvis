@@ -24,6 +24,16 @@ Open apps, open websites, type text, click at coordinates, press keyboard shortc
 **Runs multiple agents in parallel for complex tasks**
 Simple question → one agent answers directly. Complex task → Chief Agent breaks it into subtasks, runs Research + Code + Writer agents in parallel, then combines the results. You can watch the whole pipeline live in the HUD.
 
+## Two ways to run it
+
+There are two modes and it's worth understanding the difference.
+
+`python jarvis.py` runs everything in one process. You type or speak, it classifies, routes, runs the agent, and responds — all inline. Simple, fast, no moving parts.
+
+`python scripts/run_jarvis_desktop.py` (or `run_dashboard.py`) launches three things together: the FastAPI server, the orchestrator worker, and the desktop panel. In this mode tasks flow through a file-based queue. When you submit something via the panel or the web dashboard, it writes a JSON file to `queue/pending/`. The orchestrator is a background process that watches that folder in a loop — it picks up the file, runs the full pipeline, writes the result back to the file, and moves it to `queue/completed/`. The panel then polls for that completed result and reads it back.
+
+This queue-based design means the system never blocks. You can submit ten tasks, the orchestrator processes them one at a time, and the HUD dashboard updates in real time as each one moves through the pipeline. The orchestrator is also what powers the event stream — every step it takes (classifier ran, model selected, agent started, result saved) gets emitted as an event that the HUD picks up.
+
 ## How it's built
 
 ```
@@ -151,8 +161,9 @@ The backend also runs a FastAPI server at `localhost:8000` with a web dashboard 
 ## Project structure
 
 ```
-jarvis.py                   ← terminal REPL, main entry point
-launch.py                   ← desktop launcher (orb + server + orchestrator)
+jarvis.py                   ← terminal REPL, handles everything inline in one process
+orchestrator.py             ← background worker that processes the file-based task queue
+launch.py                   ← desktop launcher (starts orb + server + orchestrator together)
 
 agents/
   chief_agent.py            ← task planner, multi-agent coordinator
